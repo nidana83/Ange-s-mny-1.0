@@ -2,33 +2,51 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { AppState } from '../shared/types';
 import type { Scope } from '../shared/analytics';
 import { todayISO } from '../shared/dates';
-import { api } from './api';
+import { api, setUnauthorizedHandler } from './api';
+
+export type Theme = 'system' | 'light' | 'dark';
+export interface AuthStatus { needsSetup: boolean; authenticated: boolean; user: { name: string; person: string } | null }
 
 interface Store {
   state: AppState | null;
+  auth: AuthStatus | null;
   error: string | null;
   loading: boolean;
   today: string;
   scope: Scope;
   setScope: (s: Scope) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
   /** Appelle l'API ; si la réponse contient un état complet, il remplace l'état courant. */
   call: <T = AppState>(path: string, opts?: { method?: string; body?: unknown }) => Promise<T>;
   reload: () => Promise<void>;
+  refreshAuth: () => Promise<void>;
   toast: (msg: string, kind?: 'ok' | 'error') => void;
   toasts: { id: number; msg: string; kind: 'ok' | 'error' }[];
 }
 
 const Ctx = createContext<Store | null>(null);
 
+const read = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } };
+
+export function applyTheme(t: Theme) {
+  const root = document.documentElement;
+  if (t === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', t);
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState | null>(null);
+  const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scope, setScopeState] = useState<Scope>(() => {
-    try { return (localStorage.getItem('mny-scope') as Scope) || 'me'; } catch { return 'me'; }
-  });
+  const [scope, setScopeState] = useState<Scope>(() => (read('mny-scope', 'me') as Scope));
+  const [theme, setThemeState] = useState<Theme>(() => (read('mny-theme', 'system') as Theme));
   const [toasts, setToasts] = useState<Store['toasts']>([]);
   const today = todayISO();
+
+  useEffect(() => { applyTheme(theme); }, [theme]);
 
   const toast = useCallback((msg: string, kind: 'ok' | 'error' = 'ok') => {
     const id = Date.now() + Math.random();
@@ -41,11 +59,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState(await api('/state'));
       setError(null);
     } catch (e) {
+      if ((e as { status?: number }).status !== 401) setError((e as Error).message);
+    }
+  }, []);
+
+  const refreshAuth = useCallback(async () => {
+    try {
+      const a = await api<AuthStatus>('/auth/status');
+      setAuth(a);
+      if (a.authenticated) await reload();
+      else setState(null);
+      setError(null);
+    } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [reload]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => { setState(null); setAuth((a) => (a ? { ...a, authenticated: false } : a)); });
+    void refreshAuth();
+  }, [refreshAuth]);
 
   const call = useCallback(async <T,>(path: string, opts?: { method?: string; body?: unknown }) => {
     try {
@@ -58,14 +93,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
-  const setScope = (s: Scope) => {
-    setScopeState(s);
-    try { localStorage.setItem('mny-scope', s); } catch { /* stockage indisponible */ }
-  };
+  const setScope = (s: Scope) => { setScopeState(s); write('mny-scope', s); };
+  const setTheme = (t: Theme) => { setThemeState(t); write('mny-theme', t); };
 
-  useEffect(() => { void reload(); }, [reload]);
-
-  const value = useMemo(() => ({ state, error, loading, today, scope, setScope, call, reload, toast, toasts }), [state, error, loading, today, scope, call, reload, toast, toasts]);
+  const value = useMemo(() => ({ state, auth, error, loading, today, scope, setScope, theme, setTheme, call, reload, refreshAuth, toast, toasts }),
+    [state, auth, error, loading, today, scope, theme, call, reload, refreshAuth, toast, toasts]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

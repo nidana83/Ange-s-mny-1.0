@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Account, AppState, FixedCharge, Transaction } from '../src/shared/types';
-import { DEFAULT_SETTINGS } from '../src/shared/types';
+import { DEFAULT_COUPLE, DEFAULT_SETTINGS } from '../src/shared/types';
 import { defaultCategories } from '../src/shared/defaults';
 import { categorize, detectTransfers, findDuplicates, transactionHash } from '../src/shared/categorize';
 import { parseCsv, parseOfx } from '../src/shared/importers';
@@ -14,19 +14,22 @@ import { answerQuestion, generateInsights } from '../src/shared/advisor';
 
 const acc = (p: Partial<Account> & { id: string }): Account => ({
   name: p.id, type: 'current', owner: 'ange', institution: 'Revolut', currency: 'EUR', balance: 0, provider: 'manual',
-  externalId: null, connectionId: null, consentAt: null, includeInAvailable: true, archived: false, updatedAt: '', ...p,
+  externalId: null, connectionId: null, consentAt: null, includeInAvailable: true, archived: false, updatedAt: '', originalBalance: 0, ...p,
 });
 let n = 0;
 const tx = (accountId: string, date: string, amount: number, description: string, p: Partial<Transaction> = {}): Transaction => ({
   id: `t${++n}`, accountId, date, amount, description, merchant: description, categoryId: null, isTransfer: false, pending: false,
-  externalId: null, hash: `h${n}`, source: 'manual', note: '', ...p,
+  externalId: null, hash: `h${n}`, source: 'manual', note: '', excluded: false, cancelled: false, shared: false, attachmentCount: 0, originalAmount: null, ...p,
 });
 
 function baseState(p: Partial<AppState> = {}): AppState {
   return {
     settings: { ...DEFAULT_SETTINGS, payday: 28, expectedIncome: 200000, monthlySavings: 30000 },
     accounts: [], transactions: [], categories: defaultCategories(), charges: [], chargeMonths: [], monthBudgets: [], goals: [],
-    snapshots: [], syncRuns: [], connections: [], rules: [], bankingConfigured: false, ...p,
+    snapshots: [], syncRuns: [], connections: [], rules: [], bankingConfigured: false,
+    viewer: { userId: 'u1', person: 'ange', name: 'Ange', username: 'ange', sharing: false },
+    partner: { person: 'kelly', name: 'Kelly', exists: true, sharesWithMe: false, sharedSince: null, expectedIncome: null },
+    couple: { ...DEFAULT_COUPLE }, archives: [], demo: false, ...p,
   };
 }
 
@@ -109,7 +112,7 @@ describe('catégorisation, doublons, transferts', () => {
 describe('budget du mois', () => {
   const main = acc({ id: 'main', balance: 150000 });
   const vault = acc({ id: 'vault', type: 'vault', includeInAvailable: false, balance: 50000 });
-  const loyer: FixedCharge = { id: 'c1', name: 'Loyer', amount: 80000, dayOfMonth: 5, frequency: 'monthly', accountId: 'main', categoryId: 'logement', startMonth: '2026-01', endMonth: null, matchKeyword: 'loyer', active: true };
+  const loyer: FixedCharge = { id: 'c1', name: 'Loyer', amount: 80000, dayOfMonth: 5, frequency: 'monthly', accountId: 'main', categoryId: 'logement', startMonth: '2026-01', endMonth: null, matchKeyword: 'loyer', active: true, owner: 'ange' };
   const edf: FixedCharge = { ...loyer, id: 'c2', name: 'EDF', amount: 6500, dayOfMonth: 20, categoryId: 'energie', matchKeyword: 'edf' };
   const state = baseState({
     accounts: [main, vault],
@@ -193,5 +196,93 @@ describe('objectifs et projections', () => {
     expect(at12[1]).toBeLessThan(at12[2]);
     const eq = simulate(params, SCENARIOS[1], '2026-11');
     expect(eq[5].total - eq[6].total).toBeGreaterThan(200000); // la dépense exceptionnelle est bien prise en compte
+  });
+});
+
+import { coupleMonth } from '../src/shared/couple';
+import { computeAlerts } from '../src/shared/alerts';
+import { detectRecurring } from '../src/shared/recurring';
+
+describe('couple', () => {
+  const ange = acc({ id: 'a', owner: 'ange', balance: 100000 });
+  const kelly = acc({ id: 'k', owner: 'kelly', balance: 100000, consentAt: '2026-11-01' });
+  const joint = acc({ id: 'j', owner: 'joint', type: 'joint', balance: 50000 });
+  const txs = [
+    tx('a', '2026-11-01', -60000, 'Virement compte commun', { isTransfer: true }),
+    tx('j', '2026-11-01', 60000, 'Virement de Ange', { isTransfer: true }),
+    tx('k', '2026-11-02', -40000, 'Virement compte commun', { isTransfer: true }),
+    tx('j', '2026-11-02', 40000, 'Virement de Kelly', { isTransfer: true }),
+    tx('j', '2026-11-05', -80000, 'Loyer', { categoryId: 'logement' }),
+    tx('a', '2026-11-06', -10000, 'Courses communes', { categoryId: 'courses', shared: true }),
+    tx('a', '2026-11-07', -5000, 'Cinéma perso', { categoryId: 'loisirs' }),
+    tx('a', '2026-11-03', 250000, 'Salaire', { categoryId: 'salaire' }),
+    tx('k', '2026-11-03', 150000, 'Salaire', { categoryId: 'salaire' }),
+  ];
+
+  it('répartit les dépenses communes à 50/50 et calcule qui doit combien', () => {
+    const s = baseState({ accounts: [ange, kelly, joint], transactions: txs });
+    const c = coupleMonth(s, '2026-11');
+    expect(c.commonExpenses).toBe(90000);
+    expect(c.people.ange.contributions).toBe(60000);
+    expect(c.people.kelly.contributions).toBe(40000);
+    expect(c.people.ange.sharedPaid).toBe(10000);
+    expect(c.people.ange.personalExpenses).toBe(5000);
+    expect(c.due).toEqual({ ange: 45000, kelly: 45000 });
+    // Ange a payé 70 000, Kelly 40 000 : (25 000 − (−5 000)) / 2 = 15 000 dus par Kelly
+    expect(c.settlement).toBe(15000);
+    // Les virements vers le compte commun ne sont ni des dépenses ni des revenus
+    expect(c.people.ange.income).toBe(250000);
+    expect(c.joint.income).toBe(0);
+  });
+
+  it('applique le prorata des revenus et les remboursements', () => {
+    const s = baseState({
+      accounts: [ange, kelly, joint],
+      transactions: [...txs, tx('k', '2026-11-10', -5000, 'Remboursement Ange', { categoryId: 'remboursement-couple', isTransfer: true }), tx('a', '2026-11-10', 5000, 'Remboursement Kelly', { categoryId: 'remboursement-couple', isTransfer: true })],
+      settings: { ...DEFAULT_SETTINGS, expectedIncome: 300000 },
+      partner: { person: 'kelly', name: 'Kelly', exists: true, sharesWithMe: true, sharedSince: '2026-11-01', expectedIncome: 100000 },
+      couple: { splitMode: 'income', manualShare: 0.5, categoryShares: {} },
+    });
+    const c = coupleMonth(s, '2026-11');
+    expect(c.shareAnge).toBeCloseTo(0.75);
+    expect(c.due).toEqual({ ange: 67500, kelly: 22500 });
+    expect(c.reimbursements).toEqual({ angeToKelly: 0, kellyToAnge: 5000 });
+    // (2 500 − 17 500) / 2 = −7 500, puis −5 000 déjà remboursés par Kelly → Ange doit 12 500
+    expect(c.settlement).toBe(-12500);
+  });
+
+  it('ignore les comptes de Kelly tant qu\'elle ne les partage pas', () => {
+    const s = baseState({ accounts: [ange, { ...kelly, consentAt: null }, joint], transactions: txs });
+    const c = coupleMonth(s, '2026-11');
+    expect(c.people.kelly.income).toBe(0);
+    expect(c.people.kelly.visible).toBe(false);
+  });
+});
+
+describe('exclusions, alertes et récurrences', () => {
+  const main = acc({ id: 'main', balance: 10000 });
+  it('les opérations exclues ou annulées sortent des calculs', () => {
+    const s = baseState({ accounts: [main], transactions: [tx('main', '2026-11-03', -5000, 'Resto', { categoryId: 'restauration', excluded: true }), tx('main', '2026-11-04', -3000, 'Resto', { categoryId: 'restauration', cancelled: true }), tx('main', '2026-11-05', -2000, 'Resto', { categoryId: 'restauration' })] });
+    expect(monthSummary(s, '2026-11', '2026-11-10').variable).toBe(2000);
+  });
+
+  it('déclenche les alertes selon les seuils et respecte la désactivation', () => {
+    const transactions = [tx('main', '2026-11-08', -25000, 'Apple Store', { categoryId: 'shopping' })];
+    const s = baseState({ accounts: [main], transactions });
+    const kinds = computeAlerts(s, '2026-11-10').map((a) => a.kind);
+    expect(kinds).toContain('largeExpense');
+    expect(kinds).toContain('lowBalance');
+    expect(kinds).toContain('budgetOverrun');
+    const off = baseState({ accounts: [main], transactions, settings: { ...s.settings, alerts: { ...s.settings.alerts, largeExpense: { enabled: false, threshold: 15000 }, lowBalance: { enabled: true, threshold: 5000 } } } });
+    const k2 = computeAlerts(off, '2026-11-10').map((a) => a.kind);
+    expect(k2).not.toContain('largeExpense');
+    expect(k2).not.toContain('lowBalance');
+  });
+
+  it('identifie les paiements récurrents mensuels', () => {
+    const s = baseState({ accounts: [main], transactions: ['2026-07-15', '2026-08-15', '2026-09-15', '2026-10-15'].map((d) => tx('main', d, -1199, 'Spotify P1234', { categoryId: 'abonnements' })) });
+    const r = detectRecurring(s);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ frequency: 'monthly', amount: 1199, occurrences: 4, nextDate: '2026-11-15', tracked: false });
   });
 });

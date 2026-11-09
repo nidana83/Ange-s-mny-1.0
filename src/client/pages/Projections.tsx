@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { useStore } from '../store';
 import { Badge, Card, chartTheme, eur, Field, kEur, Money, MoneyInput, ScopeToggle } from '../components/ui';
-import { accountsInScope, goalStatus, historicalAverages, ownersInScope } from '../../shared/analytics';
+import { accountsInScope, goalStatus, historicalAverages, ownersInScope, viewerOf } from '../../shared/analytics';
 import { compareScenarios, monthReaching, MILESTONES, type ExceptionalExpense, type ProjectionParams } from '../../shared/projections';
 import { monthKey, monthLabel } from '../../shared/dates';
 import { sum } from '../../shared/money';
 
-const COLORS = { prudent: '#f59e0b', equilibre: '#7c5cff', optimiste: '#22c55e' };
+const COLORS = { prudent: '#f59e0b', equilibre: 'var(--accent)', optimiste: '#22c55e' };
 const MILESTONE_LABEL: Record<number, string> = { 3: '3 mois', 6: '6 mois', 12: '1 an', 36: '3 ans', 60: '5 ans' };
 
 export function Projections() {
@@ -45,7 +45,7 @@ export function Projections() {
     Équilibré: results[1].points[i].total,
     Optimiste: results[2].points[i].total,
   }));
-  const owners = ownersInScope(scope);
+  const owners = ownersInScope(scope, viewerOf(state));
   const goals = state.goals.filter((g) => owners.includes(g.owner) && g.saved < g.target);
   const [ex, setEx] = useState<{ label: string; amount: number; monthOffset: number }>({ label: '', amount: 0, monthOffset: 6 });
 

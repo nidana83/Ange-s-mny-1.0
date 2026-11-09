@@ -1,72 +1,18 @@
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
 import { useStore } from '../store';
-import { Badge, Card, Empty, eur, Field, Modal, Money, MoneyInput, Progress, Stat, Tabs, ownerLabel } from '../components/ui';
+import { Badge, Card, Empty, eur, Field, Modal, Money, MoneyInput, Progress, useOwnerLabel } from '../components/ui';
 import {
-  budgetFor, chargesForMonth, goalStatus, historicalAverages, plannedMonthlySavings, variableBudgetLines, type ChargeInstance,
+  budgetFor, goalStatus, variableBudgetLines, type ChargeInstance,
 } from '../../shared/analytics';
-import { addMonths, dateLabel, daysInMonth, monthKey, monthLabel } from '../../shared/dates';
+import { dateLabel, daysInMonth, monthKey, monthLabel } from '../../shared/dates';
 import { formatPct, sum } from '../../shared/money';
 import type { Category, FixedCharge, Frequency, Goal } from '../../shared/types';
 
-type Tab = 'fixes' | 'variables' | 'epargne';
 const FREQ: Record<Frequency, string> = { weekly: 'Hebdomadaire', monthly: 'Mensuelle', quarterly: 'Trimestrielle', yearly: 'Annuelle' };
-
-export function PlanMonth() {
-  const { state, today, scope } = useStore();
-  const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) || 'fixes';
-  const [month, setMonth] = useState(monthKey(today));
-
-  const charges = useMemo(() => chargesForMonth(state, month, today, scope), [state, month, today, scope]);
-  const lines = useMemo(() => variableBudgetLines(state, month, today, scope), [state, month, today, scope]);
-  const avg = useMemo(() => historicalAverages(state, today, 3, scope), [state, today, scope]);
-
-  const fixedTotal = sum(charges.filter((c) => c.status !== 'skipped'), (c) => c.amount);
-  const variableTotal = sum(lines, (l) => l.budget);
-  const savings = plannedMonthlySavings(state, scope);
-  const income = state.settings.expectedIncome || avg.income;
-  const balance = income - fixedTotal - variableTotal - savings;
-
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Préparer mon mois</h1>
-          <p className="muted">Planifie tes charges, tes enveloppes de dépenses et ton épargne avant le début du mois.</p>
-        </div>
-        <div className="row gap-s">
-          <button className="btn" onClick={() => setMonth(addMonths(month, -1))}>‹</button>
-          <strong style={{ minWidth: 140, textAlign: 'center', textTransform: 'capitalize' }}>{monthLabel(month)}</strong>
-          <button className="btn" onClick={() => setMonth(addMonths(month, 1))}>›</button>
-          {month !== monthKey(today) && <button className="btn btn-sm btn-ghost" onClick={() => setMonth(monthKey(today))}>Aujourd'hui</button>}
-        </div>
-      </div>
-
-      <div className="grid g4">
-        <Stat icon="⬇️" label="Revenus prévus" value={<Money cents={income} />} hint={state.settings.expectedIncome ? 'Défini dans les paramètres' : avg.monthsUsed ? `Moyenne des ${avg.monthsUsed} derniers mois` : 'À définir dans les paramètres'} />
-        <Stat icon="🧾" label="Charges fixes" value={<Money cents={fixedTotal} />} hint={`${charges.length} échéance(s)`} />
-        <Stat icon="🎯" label="Enveloppes variables" value={<Money cents={variableTotal} />} hint={`${lines.filter((l) => l.budget).length} catégories budgétées`} />
-        <Stat icon="🐷" label="Épargne programmée" value={<Money cents={savings} />} hint={balance >= 0 ? `Marge non affectée : ${eur(balance)}` : `Plan déficitaire de ${eur(-balance)}`} tone={balance >= 0 ? 'good' : 'danger'} />
-      </div>
-      {balance < 0 && income > 0 && <div className="banner danger">🚨 Ton plan du mois dépasse tes revenus prévus de <strong>{eur(-balance)}</strong>. Réduis une enveloppe ou ton épargne.</div>}
-
-      <Tabs<Tab> value={tab} onChange={(t) => setParams({ tab: t })} items={[
-        { value: 'fixes', label: `A · Charges fixes (${eur(fixedTotal, false)})` },
-        { value: 'variables', label: `B · Dépenses variables (${eur(variableTotal, false)})` },
-        { value: 'epargne', label: `C · Épargne (${eur(savings, false)})` },
-      ]} />
-
-      {tab === 'fixes' && <FixedCharges month={month} charges={charges} />}
-      {tab === 'variables' && <VariableBudgets month={month} lines={lines} />}
-      {tab === 'epargne' && <Savings />}
-    </div>
-  );
-}
 
 /* --------------------------------- A. Charges --------------------------------- */
 
-function FixedCharges({ month, charges }: { month: string; charges: ChargeInstance[] }) {
+export function FixedCharges({ month, charges }: { month: string; charges: ChargeInstance[] }) {
   const { state, call, toast } = useStore();
   const [edit, setEdit] = useState<Partial<FixedCharge> | null>(null);
   const setStatus = (c: ChargeInstance, status: string) => call(`/charges/${c.charge.id}/month`, { method: 'PUT', body: { month, status } });
@@ -98,7 +44,7 @@ function FixedCharges({ month, charges }: { month: string; charges: ChargeInstan
                     <td className="muted small">{acc?.name ?? '—'}</td>
                     <td className="right"><Money cents={c.amount} /></td>
                     <td>
-                      <select value={c.status} onChange={(e) => setStatus(c, e.target.value)} style={{ width: 130, padding: '4px 8px' }}>
+                      <select value={c.status} disabled={c.charge.owner !== state.viewer.person && c.charge.owner !== 'joint'} onChange={(e) => setStatus(c, e.target.value)} style={{ width: 130, padding: '4px 8px' }}>
                         <option value="paid">✅ Payée</option>
                         <option value="pending">⏳ À venir</option>
                         <option value="skipped">⏭️ Pas ce mois</option>
@@ -106,7 +52,7 @@ function FixedCharges({ month, charges }: { month: string; charges: ChargeInstan
                       {c.auto && <div className="small muted">auto-rapprochée</div>}
                       {c.overdue && <div className="small" style={{ color: 'var(--warn)' }}>échéance passée</div>}
                     </td>
-                    <td className="right"><button className="btn-icon" onClick={() => setEdit(c.charge)} aria-label="Modifier">✏️</button></td>
+                    <td className="right">{(c.charge.owner === state.viewer.person || c.charge.owner === 'joint') && <button className="btn-icon" onClick={() => setEdit(c.charge)} aria-label="Modifier">✏️</button>}</td>
                   </tr>
                 );
               })}
@@ -148,9 +94,16 @@ function ChargeModal({ value, onClose, onSave, onDelete, categories }: { value: 
         <Field label="Compte utilisé">
           <select value={c.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value || null })}>
             <option value="">—</option>
-            {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {state.accounts.filter((a) => a.owner === state.viewer.person || a.owner === 'joint').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </Field>
+        {!c.accountId && (
+          <Field label="Charge de">
+            <select value={c.owner ?? state.viewer.person} onChange={(e) => set({ owner: e.target.value as FixedCharge['owner'] })}>
+              <option value={state.viewer.person}>{state.viewer.name}</option><option value="joint">Commun</option>
+            </select>
+          </Field>
+        )}
         <Field label="Premier mois"><input type="month" value={c.startMonth ?? ''} onChange={(e) => set({ startMonth: e.target.value })} /></Field>
         <Field label="Dernier mois (optionnel)" hint="Laisse vide pour reporter indéfiniment"><input type="month" value={c.endMonth ?? ''} onChange={(e) => set({ endMonth: e.target.value || null })} /></Field>
         <Field label="Mot-clé du prélèvement" hint="Ex. « edf » : sert à cocher la charge automatiquement quand le prélèvement arrive.">
@@ -169,7 +122,7 @@ function ChargeModal({ value, onClose, onSave, onDelete, categories }: { value: 
 
 /* ----------------------------- B. Dépenses variables ----------------------------- */
 
-function VariableBudgets({ month, lines }: { month: string; lines: ReturnType<typeof variableBudgetLines> }) {
+export function VariableBudgets({ month, lines }: { month: string; lines: ReturnType<typeof variableBudgetLines> }) {
   const { state, today, call, toast } = useStore();
   const [newCat, setNewCat] = useState<Partial<Category> | null>(null);
   const progress = month === monthKey(today) ? Number(today.slice(8, 10)) / daysInMonth(month) : month < monthKey(today) ? 1 : 0;
@@ -186,7 +139,7 @@ function VariableBudgets({ month, lines }: { month: string; lines: ReturnType<ty
     <Card
       title="Dépenses variables"
       subtitle="Chaque opération catégorisée est automatiquement déduite de son enveloppe"
-      actions={<button className="btn btn-primary" onClick={() => setNewCat({ kind: 'variable', color: '#7c5cff', icon: '📦', monthlyBudget: 0, keywords: [] })}>+ Nouvelle catégorie</button>}
+      actions={<button className="btn btn-primary" onClick={() => setNewCat({ kind: 'variable', color: 'var(--accent)', icon: '📦', monthlyBudget: 0, keywords: [] })}>+ Nouvelle catégorie</button>}
     >
       {lines.map((l) => (
         <BudgetRow key={l.category.id} line={l} progress={progress} hasOverride={state.monthBudgets.some((b) => b.categoryId === l.category.id && b.month === month)}
@@ -247,7 +200,7 @@ export function CategoryModal({ value, onClose, onSave }: { value: Partial<Categ
           </select>
         </Field>
         <Field label="Icône (emoji)"><input value={c.icon ?? ''} onChange={(e) => set({ icon: e.target.value })} maxLength={4} /></Field>
-        <Field label="Couleur"><input type="color" value={c.color ?? '#7c5cff'} onChange={(e) => set({ color: e.target.value })} style={{ height: 40 }} /></Field>
+        <Field label="Couleur"><input type="color" value={c.color ?? 'var(--accent)'} onChange={(e) => set({ color: e.target.value })} style={{ height: 40 }} /></Field>
         <Field label="Budget mensuel par défaut"><MoneyInput value={c.monthlyBudget ?? 0} onChange={(monthlyBudget) => set({ monthlyBudget })} /></Field>
         <Field label="Mots-clés (séparés par des virgules)" hint="Servent à la catégorisation automatique">
           <input value={(c.keywords ?? []).join(', ')} onChange={(e) => set({ keywords: e.target.value.split(',').map((s) => s.trim()) })} />
@@ -266,8 +219,10 @@ export function CategoryModal({ value, onClose, onSave }: { value: Partial<Categ
 const HORIZON = { short: 'Court terme', medium: 'Moyen terme', long: 'Long terme' };
 const KIND = { security: '🛟 Fonds de sécurité', project: '🎯 Projet', investment: '📈 Investissement', other: '📦 Autre' };
 
-function Savings() {
+export function SavingsSection() {
   const { state, today, call, toast } = useStore();
+  const ownerLabel = useOwnerLabel();
+  const writable = (o: string) => o === state.viewer.person || o === 'joint';
   const [edit, setEdit] = useState<Partial<Goal> | null>(null);
   const [fixed, setFixed] = useState(state.settings.monthlySavings);
   const [extra, setExtra] = useState(state.settings.extraSavings);
@@ -285,7 +240,7 @@ function Savings() {
           <span className="muted small">Total des contributions prévues sur tes objectifs : <strong>{eur(contributions)}</strong>{contributions !== fixed + extra && fixed + extra > 0 ? ' — différent de ton plan mensuel' : ''}</span>
         </div>
       </Card>
-      <Card title="Objectifs" actions={<button className="btn btn-primary" onClick={() => setEdit({ owner: 'ange', horizon: 'medium', kind: 'project' })}>+ Nouvel objectif</button>}>
+      <Card title="Objectifs" actions={<button className="btn btn-primary" onClick={() => setEdit({ owner: state.viewer.person, horizon: 'medium', kind: 'project' })}>+ Nouvel objectif</button>}>
         {state.goals.length === 0 ? <Empty icon="🎯" title="Aucun objectif">Fonds de sécurité, voyage, voiture, mobilier, investissement…</Empty> : (
           <div className="grid g2">
             {state.goals.map((g) => {
@@ -293,8 +248,8 @@ function Savings() {
               return (
                 <div key={g.id} className="stat stack-s">
                   <div className="row between">
-                    <div><strong>{g.name}</strong><div className="muted small">{KIND[g.kind]} · {HORIZON[g.horizon]} · {ownerLabel(g.owner, state.settings.partnerName, state.settings.userName)}</div></div>
-                    <button className="btn-icon" onClick={() => setEdit(g)} aria-label="Modifier">✏️</button>
+                    <div><strong>{g.name}</strong><div className="muted small">{KIND[g.kind]} · {HORIZON[g.horizon]} · {ownerLabel(g.owner)}</div></div>
+                    {writable(g.owner) ? <button className="btn-icon" onClick={() => setEdit(g)} aria-label="Modifier">✏️</button> : <Badge>lecture seule</Badge>}
                   </div>
                   <div className="row between"><span className="stat-value" style={{ fontSize: 20 }}><Money cents={g.saved} /></span><span className="muted">sur {eur(g.target)}</span></div>
                   <Progress ratio={s.progress} color="var(--accent-2)" height={10} />
@@ -345,7 +300,7 @@ function GoalModal({ value, onClose, onSave, onDelete }: { value: Partial<Goal> 
         <Field label="Date objectif (optionnelle)"><input type="date" value={g.targetDate ?? ''} onChange={(e) => set({ targetDate: e.target.value || null })} /></Field>
         <Field label="Pour qui ?">
           <select value={g.owner} onChange={(e) => set({ owner: e.target.value as Goal['owner'] })}>
-            <option value="ange">{state.settings.userName} (individuel)</option><option value="joint">Commun avec {state.settings.partnerName}</option>
+            <option value={state.viewer.person}>{state.viewer.name} (individuel)</option><option value="joint">Commun avec {state.partner.name}</option>
           </select>
         </Field>
         <Field label="Horizon">
@@ -354,7 +309,7 @@ function GoalModal({ value, onClose, onSave, onDelete }: { value: Partial<Goal> 
         <Field label="Compte / coffre lié (optionnel)">
           <select value={g.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value || null })}>
             <option value="">—</option>
-            {state.accounts.filter((a) => a.type !== 'current').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {state.accounts.filter((a) => a.type !== 'current' && (a.owner === state.viewer.person || a.owner === 'joint')).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </Field>
         {linked && <Field label=" "><button className="btn btn-sm" onClick={() => set({ saved: linked.balance })}>Utiliser le solde du coffre</button></Field>}

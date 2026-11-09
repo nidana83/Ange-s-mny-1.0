@@ -17,7 +17,7 @@ export interface SyncOutcome {
  */
 export async function syncConnection(repo: Repo, box: SecretBox, provider: BankProvider, connectionId: string): Promise<SyncOutcome> {
   const row = repo.connectionRow(connectionId);
-  const runId = repo.startRun(provider.id, connectionId);
+  const runId = repo.startRun(provider.id, connectionId, row?.owner ?? null);
   try {
     if (!row) throw new Error('Connexion introuvable.');
     if (!row.session_secret) throw new Error('Consentement non finalisé : reconnecte le compte.');

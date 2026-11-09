@@ -133,12 +133,13 @@ export function Tabs<T extends string>({ value, onChange, items }: { value: T; o
 
 export function ScopeToggle() {
   const { scope, setScope, state } = useStore();
-  const partner = state?.settings.partnerName ?? 'Kelly';
+  const partner = state?.partner?.name ?? 'Kelly';
+  const shared = !!state?.partner?.sharesWithMe;
   return (
     <Tabs
       value={scope}
       onChange={setScope}
-      items={[{ value: 'me', label: '👤 Moi' }, { value: 'couple', label: `💞 Couple (avec ${partner})` }]}
+      items={[{ value: 'me', label: 'Moi + commun' }, { value: 'couple', label: shared ? `Couple (avec ${partner})` : `Couple (${partner} : non partagé)` }]}
     />
   );
 }
@@ -164,7 +165,20 @@ export function Gauge({ ratio, label, sub }: { ratio: number; label: string; sub
   );
 }
 
-export const ownerLabel = (o: string, partner = 'Kelly', me = 'Ange') => (o === 'ange' ? me : o === 'kelly' ? partner : 'Commun');
+/** Libellé d'un propriétaire du point de vue de l'utilisateur connecté. */
+export function useOwnerLabel() {
+  const { state } = useStore();
+  return (o: string) => (o === 'joint' ? 'Commun' : o === state.viewer.person ? state.viewer.name : state.partner.name);
+}
+
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="switch" title={label}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+      <span />
+    </label>
+  );
+}
 
 export const chartTheme = {
   grid: 'var(--line)',

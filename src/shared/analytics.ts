@@ -3,6 +3,7 @@
  * Fonctions pures — aucune donnée n'est inventée : tout est dérivé de l'état fourni.
  */
 import type { Account, AppState, Category, FixedCharge, Goal, Owner, Transaction } from './types';
+import { partnerOf } from './types';
 import {
   addDays, addMonths, dateInMonth, daysInMonth, diffDays, monthKey, monthsBetween, nextPayday,
   parseISODate, previousPayday, toISODate, weekStart,
@@ -15,22 +16,37 @@ export type Scope = 'me' | 'couple';
 
 const SAVINGS_TYPES = new Set(['savings', 'vault', 'investment']);
 
-export function accountAllowed(a: Account): boolean {
-  // Les comptes de Kelly ne sont utilisés qu'avec son consentement explicite
-  return !a.archived && (a.owner !== 'kelly' || !!a.consentAt);
+/** Personne qui consulte l'application (« moi »). */
+export function viewerOf(state: AppState): Owner {
+  return state.viewer?.person ?? 'ange';
+}
+
+export function partnerPerson(state: AppState): Owner {
+  return partnerOf(viewerOf(state));
+}
+
+export function accountAllowed(a: Account, viewer: Owner = 'ange'): boolean {
+  // Les comptes du/de la partenaire ne sont utilisés qu'avec son consentement explicite
+  return !a.archived && (a.owner === viewer || a.owner === 'joint' || !!a.consentAt);
 }
 
 export function accountsInScope(state: AppState, scope: Scope): Account[] {
-  return state.accounts.filter((a) => accountAllowed(a) && (scope === 'couple' || a.owner !== 'kelly'));
+  const me = viewerOf(state);
+  return state.accounts.filter((a) => accountAllowed(a, me) && (scope === 'couple' || a.owner === me || a.owner === 'joint'));
 }
 
-export function ownersInScope(scope: Scope): Owner[] {
-  return scope === 'couple' ? ['ange', 'kelly', 'joint'] : ['ange', 'joint'];
+export function ownersInScope(scope: Scope, viewer: Owner = 'ange'): Owner[] {
+  return scope === 'couple' ? ['ange', 'kelly', 'joint'] : [viewer, 'joint'];
+}
+
+/** L'opération entre-t-elle dans les calculs ? (exclue ou annulée → non) */
+export function counts(t: Transaction): boolean {
+  return !t.excluded && !t.cancelled;
 }
 
 export function txInScope(state: AppState, scope: Scope): Transaction[] {
   const ids = new Set(accountsInScope(state, scope).map((a) => a.id));
-  return state.transactions.filter((t) => ids.has(t.accountId));
+  return state.transactions.filter((t) => ids.has(t.accountId) && counts(t));
 }
 
 function catMap(state: AppState): Map<string, Category> {
@@ -112,7 +128,8 @@ export function chargesForMonth(state: AppState, month: string, today: string, s
   const txs = txInScope(state, scope).filter((t) => Math.abs(monthsBetween(monthKey(t.date), month)) <= 1);
   const used = new Set<string>();
   const out: ChargeInstance[] = [];
-  const charges = state.charges.filter((c) => !c.accountId || accountIds.has(c.accountId) || !state.accounts.some((a) => a.id === c.accountId));
+  const owners = ownersInScope(scope, viewerOf(state));
+  const charges = state.charges.filter((c) => (c.accountId && state.accounts.some((a) => a.id === c.accountId)) ? accountIds.has(c.accountId) : owners.includes(c.owner ?? 'ange'));
   for (const c of charges) {
     const override = state.chargeMonths.find((m) => m.chargeId === c.id && m.month === month);
     const dates = c.frequency === 'weekly' ? chargeDueDates(c, month) : chargeDueDates(c, month).slice(0, 1);
@@ -234,7 +251,7 @@ export function savingsBetween(state: AppState, from: string, to: string, scope:
 export function plannedMonthlySavings(state: AppState, scope: Scope): number {
   const fromSettings = state.settings.monthlySavings + state.settings.extraSavings;
   if (fromSettings > 0) return fromSettings;
-  const owners = ownersInScope(scope);
+  const owners = ownersInScope(scope, viewerOf(state));
   return sum(state.goals.filter((g) => owners.includes(g.owner) && g.saved < g.target), (g) => g.monthlyContribution);
 }
 
@@ -296,7 +313,7 @@ export function monthSummary(state: AppState, month: string, today: string, scop
 
 /** Solde reconstitué d'un compte à une date : solde actuel − opérations postérieures. */
 export function accountBalanceAt(state: AppState, account: Account, date: string): number {
-  const after = state.transactions.filter((t) => t.accountId === account.id && t.date > date && !t.pending);
+  const after = state.transactions.filter((t) => t.accountId === account.id && t.date > date && !t.pending && !t.cancelled);
   return account.balance - sum(after, (t) => t.amount);
 }
 
@@ -534,4 +551,39 @@ export function historicalAverages(state: AppState, today: string, months = 3, s
 
 export function todayLocal(): string {
   return toISODate(new Date());
+}
+
+/* ------------------------------ Bilan annuel ------------------------------ */
+
+export function yearSummary(state: AppState, year: number, today: string, scope: Scope = 'me') {
+  const months: MonthSummary[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const key = `${year}-${String(m).padStart(2, '0')}`;
+    if (key > monthKey(today)) break;
+    months.push(monthSummary(state, key, today, scope));
+  }
+  const total = (fn: (s: MonthSummary) => number) => sum(months, fn);
+  const byCat = new Map<string, { category: Category; amount: number }>();
+  for (const s of months) for (const c of s.topCategories) {
+    const cur = byCat.get(c.category.id) ?? { category: c.category, amount: 0 };
+    cur.amount += c.amount;
+    byCat.set(c.category.id, cur);
+  }
+  const income = total((s) => s.income);
+  const savings = total((s) => s.savings);
+  const end = `${year}-12-31` < today ? `${year}-12-31` : today;
+  return {
+    year,
+    months,
+    income,
+    fixed: total((s) => s.fixed),
+    variable: total((s) => s.variable),
+    expenses: total((s) => s.expenses),
+    savings,
+    net: total((s) => s.net),
+    savingsRate: income > 0 ? savings / income : 0,
+    topCategories: [...byCat.values()].sort((a, b) => b.amount - a.amount),
+    wealthStart: balanceAt(state, `${year - 1}-12-31`, scope),
+    wealthEnd: balanceAt(state, end, scope),
+  };
 }

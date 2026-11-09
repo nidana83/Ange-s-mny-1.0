@@ -29,6 +29,7 @@ const DEFS: Def[] = [
   ['autres', 'Autres', 'variable', '#94a3b8', '📦', 3000, []],
   // Épargne & transferts
   ['epargne', 'Épargne', 'savings', '#14b8a6', '🐷', 0, ['livret', 'epargne', 'savings']],
+  ['remboursement-couple', 'Remboursement entre nous', 'transfer', '#a3a3a3', '🤝', 0, ['remboursement kelly', 'remboursement ange', 'rembourse']],
   ['transfert', 'Transfert interne', 'transfer', '#64748b', '🔄', 0, ['to pocket', 'from pocket', 'vault', 'coffre', 'exchanged to', 'top up', 'round up']],
 ];
 

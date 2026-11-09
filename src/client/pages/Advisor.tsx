@@ -5,7 +5,7 @@ import { answerQuestion, generateInsights, type Answer } from '../../shared/advi
 
 const ICON = { good: '✅', info: '💡', warn: '⚠️', danger: '🚨' } as const;
 
-export function Advisor() {
+export function Advisor({ embedded = false }: { embedded?: boolean }) {
   const { state, today, scope } = useStore();
   const insights = useMemo(() => generateInsights(state, today, scope), [state, today, scope]);
   const [msgs, setMsgs] = useState<{ from: 'user' | 'bot'; text: string; details?: string[] }[]>([
@@ -34,10 +34,10 @@ export function Advisor() {
 
   return (
     <div className="stack">
-      <div className="page-head">
+      {!embedded && <div className="page-head">
         <div><h1>Conseiller financier</h1><p className="muted">Analyse automatique de tes données et réponses à tes questions.</p></div>
         <ScopeToggle />
-      </div>
+      </div>}
       <div className="grid g2">
         <Card title="Pose ta question">
           <div className="chat">

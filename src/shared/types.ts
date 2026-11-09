@@ -28,6 +28,8 @@ export interface Account {
   includeInAvailable: boolean;
   archived: boolean;
   updatedAt: string;
+  /** Solde dans la devise du compte (balance est converti en devise principale) */
+  originalBalance: number;
 }
 
 export interface Transaction {
@@ -45,6 +47,15 @@ export interface Transaction {
   hash: string;
   source: Provider;
   note: string;
+  /** Exclue volontairement des calculs (reste visible dans l'historique) */
+  excluded: boolean;
+  /** Opération annulée (remboursée par le commerçant, rejetée…) : hors calculs et hors solde */
+  cancelled: boolean;
+  /** Dépense commune payée depuis un compte personnel (entre dans la répartition du couple) */
+  shared: boolean;
+  attachmentCount: number;
+  /** Montant dans la devise d'origine si le compte n'est pas en euros */
+  originalAmount: number | null;
 }
 
 export interface Category {
@@ -72,6 +83,7 @@ export interface FixedCharge {
   /** Mot-clé pour rapprocher automatiquement la charge d'une transaction */
   matchKeyword: string;
   active: boolean;
+  owner: Owner;
 }
 
 /** Statut / ajustement d'une charge pour un mois donné */
@@ -118,6 +130,74 @@ export interface Settings {
   alertThreshold: number;
   partnerName: string;
   userName: string;
+  /** Préférences d'alertes de l'utilisateur */
+  alerts: AlertSettings;
+  /** Taux de conversion manuels vers la devise principale (ex. { USD: 0.92 }) */
+  fxRates: Record<string, number>;
+}
+
+export interface AlertRule {
+  enabled: boolean;
+  /** Seuil en centimes (ou facteur pour « inhabituelle ») */
+  threshold: number;
+}
+
+export interface AlertSettings {
+  budgetOverrun: AlertRule;
+  largeExpense: AlertRule;
+  lowBalance: AlertRule;
+  upcomingCharge: AlertRule;
+  savingsMissed: AlertRule;
+  unusualExpense: AlertRule;
+  overdraftRisk: AlertRule;
+  goalReached: AlertRule;
+}
+
+export type SplitMode = 'equal' | 'income' | 'manual' | 'category';
+
+/** Paramètres partagés du couple (répartition des dépenses communes) */
+export interface CoupleSettings {
+  splitMode: SplitMode;
+  /** Part de « ange » en mode manuel (0..1) */
+  manualShare: number;
+  /** Part de « ange » par catégorie (0..1), mode par catégorie */
+  categoryShares: Record<string, number>;
+}
+
+export interface PartnerInfo {
+  person: Owner;
+  name: string;
+  exists: boolean;
+  /** Le/la partenaire partage ses comptes avec moi */
+  sharesWithMe: boolean;
+  sharedSince: string | null;
+  /** Revenu mensuel déclaré (seulement si partagé) */
+  expectedIncome: number | null;
+}
+
+export interface ViewerInfo {
+  userId: string;
+  person: Owner;
+  name: string;
+  username: string;
+  /** Je partage mes comptes avec mon/ma partenaire */
+  sharing: boolean;
+}
+
+export interface ArchivedMonth {
+  month: string;
+  person: Owner;
+  closedAt: string;
+  summary: Record<string, unknown>;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  details: string;
 }
 
 export interface SyncRun {
@@ -173,6 +253,28 @@ export interface AppState {
   connections: BankConnection[];
   rules: CategoryRule[];
   bankingConfigured: boolean;
+  viewer: ViewerInfo;
+  partner: PartnerInfo;
+  couple: CoupleSettings;
+  archives: ArchivedMonth[];
+  demo: boolean;
+}
+
+export const DEFAULT_ALERTS: AlertSettings = {
+  budgetOverrun: { enabled: true, threshold: 0 },
+  largeExpense: { enabled: true, threshold: 15000 },
+  lowBalance: { enabled: true, threshold: 20000 },
+  upcomingCharge: { enabled: true, threshold: 10000 },
+  savingsMissed: { enabled: true, threshold: 0 },
+  unusualExpense: { enabled: true, threshold: 3 },
+  overdraftRisk: { enabled: true, threshold: 0 },
+  goalReached: { enabled: true, threshold: 0 },
+};
+
+export const DEFAULT_COUPLE: CoupleSettings = { splitMode: 'equal', manualShare: 0.5, categoryShares: {} };
+
+export function partnerOf(p: Owner): Owner {
+  return p === 'kelly' ? 'ange' : 'kelly';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -184,4 +286,6 @@ export const DEFAULT_SETTINGS: Settings = {
   alertThreshold: 0.85,
   partnerName: 'Kelly',
   userName: 'Ange',
+  alerts: DEFAULT_ALERTS,
+  fxRates: {},
 };

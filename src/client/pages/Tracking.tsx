@@ -22,7 +22,7 @@ export function Tracking() {
   );
 }
 
-function Weekly() {
+export function Weekly() {
   const { state, today, scope } = useStore();
   const weeks = useMemo(() => weekSummaries(state, 12, today, scope), [state, today, scope]);
   const [sel, setSel] = useState(weeks.length - 1);
@@ -48,7 +48,7 @@ function Weekly() {
               <YAxis tickFormatter={kEur} tick={chartTheme.axis} width={60} />
               <Tooltip {...chartTheme.tooltip} formatter={(v) => eur(Number(v))} />
               <ReferenceLine y={avg} stroke="var(--muted)" strokeDasharray="4 4" label={{ value: 'moyenne', fill: 'var(--muted)', fontSize: 11, position: 'insideTopRight' }} />
-              <Bar dataKey="dépenses" radius={[6, 6, 0, 0]} cursor="pointer" shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} rx={6} fill={p.payload.over ? '#ef4444' : p.index === sel ? '#7c5cff' : '#4c3fa0'} />} />
+              <Bar dataKey="dépenses" radius={[6, 6, 0, 0]} cursor="pointer" shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} rx={6} fill={p.payload.over ? '#ef4444' : p.index === sel ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) 45%, var(--panel-2))'} />} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -76,8 +76,8 @@ function Weekly() {
   );
 }
 
-function Monthly() {
-  const { state, today, scope } = useStore();
+export function Monthly() {
+  const { state, today, scope, call, toast } = useStore();
   const [month, setMonth] = useState(addMonths(monthKey(today), Number(today.slice(8, 10)) < 5 ? -1 : 0));
   const s = useMemo(() => monthSummary(state, month, today, scope), [state, month, today, scope]);
   const p = useMemo(() => monthSummary(state, addMonths(month, -1), today, scope), [state, month, today, scope]);
@@ -85,12 +85,22 @@ function Monthly() {
   const isCurrent = month === monthKey(today);
   return (
     <>
-      <div className="row gap-s">
+      <div className="row gap-s wrap">
         <button className="btn" onClick={() => setMonth(addMonths(month, -1))}>‹</button>
         <strong style={{ minWidth: 150, textAlign: 'center', textTransform: 'capitalize' }}>{monthLabel(month)}</strong>
         <button className="btn" disabled={month >= monthKey(today)} onClick={() => setMonth(addMonths(month, 1))}>›</button>
         {isCurrent && <Badge tone="info">Mois en cours — bilan provisoire</Badge>}
+        {state.archives.some((a) => a.month === month) && <Badge tone="good">Archivé</Badge>}
+        <span className="grow" />
+        <button className="btn btn-sm no-print" onClick={() => window.print()}>⬇︎ Exporter en PDF</button>
+        {!isCurrent && !state.archives.some((a) => a.month === month) && (
+          <button className="btn btn-sm no-print" onClick={async () => {
+            await call('/archives', { body: { month, summary: { income: s.income, fixed: s.fixed, variable: s.variable, savings: s.savings, net: s.net, endBalance: s.endBalance, savingsRate: s.savingsRate, budgetsRespected: s.budgetsRespected, budgetsTotal: s.budgetsTotal, top: s.topCategories.slice(0, 5).map((c) => ({ name: c.category.name, amount: c.amount })) } } });
+            toast(`Bilan de ${monthLabel(month)} archivé.`);
+          }}>🗄 Archiver le mois</button>
+        )}
       </div>
+      <div className="print-only"><h2>Ange's MNY — Bilan de {monthLabel(month)}</h2><p>{state.viewer.name} · {scope === 'couple' ? 'Périmètre couple' : 'Mes comptes + communs'} · édité le {new Date().toLocaleDateString('fr-FR')}</p></div>
       <div className="grid g4">
         <Stat icon="⬇️" label="Revenus totaux" value={<Money cents={s.income} />} hint={delta(s.income, p.income)} tone="good" />
         <Stat icon="🧾" label="Charges fixes" value={<Money cents={s.fixed} />} hint={`Prévu : ${eur(s.fixedPlanned)}`} />
@@ -131,7 +141,7 @@ function Monthly() {
   );
 }
 
-function Trends() {
+export function Trends() {
   const { state, today, scope } = useStore();
   const [n, setN] = useState<3 | 6 | 12>(6);
   const data = useMemo(() => {
@@ -170,9 +180,9 @@ function Trends() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="m" tick={chartTheme.axis} /><YAxis tickFormatter={kEur} tick={chartTheme.axis} width={60} />
                 <Tooltip {...chartTheme.tooltip} formatter={(v) => eur(Number(v))} /><Legend />
-                <Area dataKey="épargne" stackId="w" fill="#22d3ee55" stroke="#22d3ee" />
-                <Area dataKey="disponible" stackId="w" fill="#7c5cff55" stroke="#7c5cff" />
-                <Line dataKey="total" stroke="#eef2ff" strokeWidth={2} dot={false} />
+                <Area dataKey="épargne" stackId="w" fill="color-mix(in srgb, var(--muted) 25%, transparent)" stroke="var(--muted)" />
+                <Area dataKey="disponible" stackId="w" fill="var(--accent-soft)" stroke="var(--accent)" />
+                <Line dataKey="total" stroke="var(--text)" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -200,7 +210,7 @@ function Trends() {
                 <XAxis dataKey="m" tick={chartTheme.axis} /><YAxis tickFormatter={kEur} tick={chartTheme.axis} width={60} />
                 <Tooltip {...chartTheme.tooltip} formatter={(v) => eur(Number(v))} />
                 <ReferenceLine y={0} stroke="var(--muted)" />
-                <Line dataKey="solde" stroke="#7c5cff" strokeWidth={3} dot={{ r: 4 }} />
+                <Line dataKey="solde" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>

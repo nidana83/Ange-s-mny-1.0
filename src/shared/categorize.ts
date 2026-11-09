@@ -67,7 +67,7 @@ export function categorize(
 const TRANSFER_PATTERNS = [
   /\bto pocket\b/, /\bfrom pocket\b/, /\bpocket\b/, /\bvault\b/, /\bcoffre\b/, /\bsavings\b/, /\bepargne\b/,
   /\bexchanged? to\b/, /\btransfer (to|from) (ange|kelly)\b/, /\bvirement interne\b/, /\bentre mes comptes\b/,
-  /\btop[- ]?up\b/, /\brechargement\b/, /\bround[- ]?up\b/, /\barrondi\b/, /\bmoney added from\b/,
+  /\btop[- ]?up\b/, /\bcompte commun\b/, /\bjoint account\b/, /\brechargement\b/, /\bround[- ]?up\b/, /\barrondi\b/, /\bmoney added from\b/,
 ];
 
 /**

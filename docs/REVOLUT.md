@@ -36,16 +36,16 @@ Garanties :
    ENABLE_BANKING_REDIRECT_URL=http://localhost:5173/api/bank/callback
    ```
 4. Dans le portail, clique sur **« Activate by linking accounts »** et relie ton compte Revolut. L'application passe alors en mode restreint actif.
-5. Relance `npm run dev`. Dans Ange's MNY, ouvre **Comptes → Connecter Revolut**, choisis le titulaire et le pays, puis valide chez Revolut.
+5. Relance `npm run dev`. Dans Ange's MNY, ouvre **Paramètres → Comptes & synchro → Connecter Revolut**, choisis « Mes comptes » ou « Compte commun » et le pays, puis valide chez Revolut.
    Les comptes (devises, espaces) sont créés automatiquement et synchronisés sur 12 mois d'historique.
 
 > ⚠️ Mets les coffres/« espaces » Revolut dans le type *Coffre* et décoche « compter dans le reste à vivre » si l'agrégateur les expose comme comptes. Selon les pays, certains coffres ne sont pas exposés par l'API Open Banking : importe-les alors via CSV.
 
 ## 3. Comptes de Kelly
 
-- Kelly doit donner son **accord explicite** (case à cocher obligatoire, horodatée).
-- Elle s'authentifie **elle-même** chez Revolut lors de la connexion.
-- Tant que son consentement n'est pas enregistré, ses comptes sont exclus de **tous** les calculs. Le retrait du consentement les exclut immédiatement.
+- Kelly a **son propre accès** à Ange's MNY. Ange l'invite depuis Paramètres → Profil.
+- Elle connecte **elle-même** son Revolut, depuis son accès, en s'authentifiant chez Revolut. Personne ne peut connecter la banque de l'autre.
+- Ses comptes restent **privés** : Ange ne les voit que si Kelly active « Partager mes comptes » (consentement horodaté, révocable à tout moment, effet immédiat). Même partagés, ils restent en lecture seule pour Ange.
 
 ## 4. Repli : import de relevés
 

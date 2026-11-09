@@ -5,7 +5,7 @@ import { computeResteAVivre } from '../../shared/analytics';
 import { dateLabel } from '../../shared/dates';
 import { formatPct } from '../../shared/money';
 
-export function ResteAVivrePage() {
+export function ResteAVivrePage({ embedded = false }: { embedded?: boolean }) {
   const { state, today, scope } = useStore();
   const r = useMemo(() => computeResteAVivre(state, today, scope), [state, today, scope]);
   const [purchase, setPurchase] = useState(0);
@@ -13,13 +13,13 @@ export function ResteAVivrePage() {
 
   return (
     <div className="stack">
-      <div className="page-head">
+      {!embedded && <div className="page-head">
         <div>
           <h1>Reste à vivre</h1>
           <p className="muted">Ce que tu peux réellement dépenser sans mettre ton budget en danger. Les transferts entre tes comptes et ceux du couple ne sont pas comptés comme des dépenses.</p>
         </div>
         <ScopeToggle />
-      </div>
+      </div>}
 
       <div className="grid g3">
         <div className="card hero span2">

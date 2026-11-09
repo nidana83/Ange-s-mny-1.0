@@ -28,7 +28,21 @@ const provider = new EnableBankingProvider(
   process.env.ENABLE_BANKING_REDIRECT_URL || `http://localhost:5173/api/bank/callback`,
 );
 
-const app = createApp({ repo, box, provider });
+const backupDir = process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups');
+const app = createApp({ repo, box, provider, cookieSecure: process.env.COOKIE_SECURE === 'true', backupDir });
+
+// Sauvegarde automatique quotidienne de la base (14 dernières conservées) + purge des sessions expirées
+const dailyMaintenance = async () => {
+  try {
+    repo.purgeSessions();
+    const f = await repo.backup(backupDir, Number(process.env.BACKUP_KEEP || 14));
+    console.log(`💾 Sauvegarde : ${f}`);
+  } catch (e) {
+    console.error('Échec de la sauvegarde automatique', e);
+  }
+};
+void dailyMaintenance();
+setInterval(dailyMaintenance, 24 * 3_600_000).unref();
 
 // En production, l'API sert aussi l'interface compilée
 const dist = path.resolve('dist');

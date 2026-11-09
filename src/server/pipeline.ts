@@ -20,7 +20,6 @@ export function ingest(repo: Repo, accountId: string, parsed: ParsedTransaction[
   const rules = repo.rules();
   const existing = repo.transactions();
   const accounts = repo.accounts();
-  const settings = repo.getSettings();
 
   // Deux opérations identiques le même jour (ex. deux cafés) restent distinctes grâce à un rang d'occurrence stable.
   const seen = new Map<string, number>();
@@ -43,6 +42,11 @@ export function ingest(repo: Repo, accountId: string, parsed: ParsedTransaction[
       hash: n === 0 ? base : `${base}-${n}`,
       source,
       note: '',
+      excluded: false,
+      cancelled: false,
+      shared: false,
+      attachmentCount: 0,
+      originalAmount: null,
     };
   });
 
@@ -57,8 +61,9 @@ export function ingest(repo: Repo, accountId: string, parsed: ParsedTransaction[
     }
     // Détection des transferts sur une fenêtre glissante incluant les nouvelles opérations
     const since = addDays(fresh.reduce((m, t) => (t.date < m ? t.date : m), todayISO()), -4);
-    const windowTx = repo.transactions().filter((t) => t.date >= since && !t.isTransfer);
-    const names = [settings.userName, settings.partnerName].filter(Boolean);
+    // Toutes les opérations de la fenêtre (y compris déjà marquées) pour apparier les virements importés compte par compte
+    const windowTx = repo.transactions().filter((t) => t.date >= since);
+    const names = [...repo.users().map((u) => u.display_name), 'Ange', 'Kelly'];
     const ids = [...detectTransfers(windowTx, accounts, names)];
     repo.markTransfers(ids);
     transfers = ids.length;

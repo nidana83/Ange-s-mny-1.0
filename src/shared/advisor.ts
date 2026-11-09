@@ -9,7 +9,7 @@ import { addMonths, monthKey, monthLabel } from './dates';
 import { formatMoney, formatPct, sum } from './money';
 import { normalize, } from './categorize';
 import {
-  computeResteAVivre, goalStatus, monthSummary, ownersInScope, savingsBetween, type Scope,
+  computeResteAVivre, goalStatus, monthSummary, ownersInScope, partnerPerson, savingsBetween, viewerOf, type Scope,
 } from './analytics';
 
 export interface Insight {
@@ -132,11 +132,11 @@ export function answerQuestion(question: string, state: AppState, today: string,
 
   // Économies avec Kelly / épargne commune
   if (new RegExp(`(econom|epargn).*(${partner}|ensemble|couple|nous)|(${partner}|couple).*(econom|epargn)`).test(q)) {
-    const owners: string[] = ['joint', 'kelly'];
+    const owners: string[] = ['joint', partnerPerson(state)];
     const goals = state.goals.filter((g) => owners.includes(g.owner));
     const saved = sum(goals, (g) => g.saved);
     const coupleSaved = savingsBetween(state, `${month}-01`, today, 'couple');
-    const kellyLinked = state.accounts.some((a) => a.owner === 'kelly' && a.consentAt);
+    const kellyLinked = state.accounts.some((a) => a.owner === partnerPerson(state) && a.consentAt);
     return {
       text: goals.length
         ? `Vos objectifs communs totalisent ${eur(saved)} épargnés sur ${eur(sum(goals, (g) => g.target))}. Ce mois-ci, ${eur(coupleSaved)} ont été mis de côté sur les comptes d'épargne suivis du couple.`
@@ -202,7 +202,7 @@ export function answerQuestion(question: string, state: AppState, today: string,
 
   // Objectifs
   if (/objectif|projet/.test(q)) {
-    const owners = ownersInScope(scope);
+    const owners = ownersInScope(scope, viewerOf(state));
     const list = state.goals.filter((g) => owners.includes(g.owner)).map((g) => {
       const s = goalStatus(g, today);
       return `${g.name} : ${Math.round(s.progress * 100)} %${s.estimatedDate ? `, atteint vers ${monthLabel(monthKey(s.estimatedDate))} (estimation)` : ', pas de contribution mensuelle définie'}`;
