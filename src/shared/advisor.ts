@@ -45,7 +45,7 @@ export function generateInsights(state: AppState, today: string, scope: Scope = 
   for (const l of cur.budgetLines) {
     if (!l.budget) continue;
     if (l.spent > l.budget) out.push({ id: `over-${l.category.id}`, level: 'danger', title: `Budget ${l.category.name} dépassé`, detail: `Dépensé ${eur(l.spent)} pour un budget de ${eur(l.budget)} (dépassement de ${eur(l.spent - l.budget)}).` });
-    else if (l.willExceedBy > 0) out.push({ id: `risk-${l.category.id}`, level: 'warn', title: `Risque sur ${l.category.name}`, detail: `À ton rythme actuel, tu risques de dépasser ton budget ${l.category.name.toLowerCase()} d'environ ${eur(l.willExceedBy)} (estimation).` });
+    else if (l.willExceedBy > 0 && day >= 10) out.push({ id: `risk-${l.category.id}`, level: 'warn', title: `Risque sur ${l.category.name}`, detail: `À ton rythme actuel, tu risques de dépasser ton budget ${l.category.name.toLowerCase()} d'environ ${eur(l.willExceedBy)} (estimation).` });
     else if (day >= 10 && l.ratio <= Math.min(1, day / 30)) out.push({ id: `ok-${l.category.id}`, level: 'good', title: `${l.category.name} sous contrôle`, detail: `Ton budget ${l.category.name.toLowerCase()} est respecté : ${eur(l.spent)} sur ${eur(l.budget)}.` });
   }
 

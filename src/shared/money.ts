@@ -34,7 +34,7 @@ export function formatMoney(cents: number, currency = 'EUR', opts: { decimals?: 
     });
     formatters.set(key, f);
   }
-  return f.format(cents / 100);
+  return f.format((cents + 0) / 100); // + 0 normalise -0
 }
 
 export function pct(part: number, total: number): number {

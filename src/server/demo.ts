@@ -57,10 +57,10 @@ export function loadDemo(repo: Repo, today = todayISO()) {
     push(main.id, d(18), -1349, 'Netflix');
     push(main.id, d(3), -8640, 'Navigo RATP');
     // Contributions au compte commun (transferts internes)
-    push(main.id, d(1), -60000, 'Transfer to Compte commun');
-    push(joint.id, d(1), 60000, 'Transfer from Ange');
-    push(kelly.id, d(1), -60000, 'Transfer to Compte commun');
-    push(joint.id, d(1), 60000, 'Transfer from Kelly');
+    push(main.id, d(1), -75000, 'Transfer to Compte commun');
+    push(joint.id, d(1), 75000, 'Transfer from Ange');
+    push(kelly.id, d(1), -75000, 'Transfer to Compte commun');
+    push(joint.id, d(1), 75000, 'Transfer from Kelly');
     // Épargne : coffres
     push(main.id, d(29), -30000, 'To pocket EUR Fonds de sécurité');
     push(security.id, d(29), 30000, 'From EUR main account');
